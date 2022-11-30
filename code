@@ -1,0 +1,388 @@
+#include <TinyGPS++.h>
+TinyGPSPlus gps;
+float latitude;
+float longitude;
+void gpsInfo();
+#include <SoftwareSerial.h>
+SoftwareSerial gsm(10, 11); // RX, TX
+SoftwareSerial gpsSerial(2, 3);
+String incomingData; // for storing incoming serial data
+String message = ""; // A String for storing the message
+void SendSMS();
+void send_message(String message);
+void SendLocation1(String message);
+void SendLocation2(String message);
+#include<LiquidCrystal.h>
+LiquidCrystal lcd(9,8,4,5,6,7);
+unsigned long startMillis;
+unsigned long currentMillis;
+const unsigned long period = 30000;
+const int sw=17;
+const int temp_pin = A0;
+float tempc,tempf,vout;
+String tempC;
+const int x_axis_pin = A1;
+const int y_axis_pin = A2;
+const int buzzer = 12;
+int x_axis = 0;
+int y_axis = 0;
+void buz()
+{
+for(int k =0;k<2;k++)
+{
+digitalWrite(buzzer, HIGH);
+delay(1000);
+digitalWrite(buzzer, LOW);
+delay(200);
+}
+}
+void setup()
+{
+pinMode(sw,INPUT_PULLUP);
+pinMode(temp_pin,INPUT);
+pinMode(x_axis_pin, INPUT); //X-Axis
+pinMode(y_axis_pin, INPUT); //Y-Axis
+pinMode(buzzer, OUTPUT);
+lcd.begin(16, 2);
+lcd.clear();
+lcd.print("Elderly Fall Det");
+lcd.setCursor(0,1);
+lcd.print("ection &Tracking"); // SYSTEM ");
+delay(5000);
+Serial.begin(9600);
+gsm.begin(9600);
+gpsSerial.begin(9600);
+delay(1000);
+Serial.println("MSG SEnding....");
+SendSMS();
+delay(1000);
+Serial.println("GPRS Connect....");
+modem_init();
+data_init();
+internet_init();
+}
+void loop()
+{
+ksn:
+receive_message();
+vout=analogRead(temp_pin);
+vout=(vout*500)/1023;
+tempc=vout; // Storing value in Degree Celsius
+tempf=(vout*1.8)+32; // Converting to Fahrenheit
+char buffer[10];
+tempC = dtostrf(tempc, 4, 1, buffer);
+lcd.clear();
+lcd.setCursor(0,0);
+lcd.print("Temp::");
+lcd.print(tempC);
+delay(500);
+if (digitalRead(sw) == 0)
+{
+buz();
+lcd.clear();
+lcd.print("I'm In Dangerous");
+lcd.setCursor(0,1);
+lcd.print("Help me....");
+delay(4000);
+SendLocation1("Emergency:");
+SendLocation2("Emergency:");
+delay(500);
+}
+currentMillis = millis();
+if (currentMillis - startMillis >= period)
+{
+lcd.clear();
+lcd.setCursor(0,0);
+lcd.print("UPDATING DATA");
+//lcd.setCursor(0,1);
+//lcd.print("CONTROLLING SYS");
+startMillis = currentMillis;
+Send_data();
+}
+else
+{
+while (gpsSerial.available() > 0)
+{
+if (gps.encode(gpsSerial.read()))
+{
+gpsInfo();
+delay(100);
+//goto ksn;
+}
+}
+}
+x_axis = analogRead(x_axis_pin);
+y_axis = analogRead(y_axis_pin);
+Serial.print(" X = ");
+Serial.println(x_axis);
+Serial.print(" Y = ");
+Serial.println(y_axis);
+if (y_axis >= 390)
+{
+buz();
+Serial.println("Forward");
+lcd.clear();
+lcd.setCursor(0,0);
+lcd.print("Front fall");
+delay(1000);
+SendLocation1("Front Fall Detection");
+delay(4000);
+SendLocation2("Front Fall Detection");
+}
+else
+{
+if (y_axis <= 310)
+{
+buz();
+Serial.println("BACK");
+lcd.clear();
+lcd.setCursor(0,0);
+lcd.print("Back fall");
+delay(1000);
+SendLocation1("Back Fall Detection");
+delay(4000);
+SendLocation2("Back Fall Detection");
+}
+else
+{
+if (x_axis >= 380)
+{
+buz();
+Serial.println("RIGHT");
+lcd.clear();
+lcd.setCursor(0,0);
+lcd.print("Right fall");
+delay(1000);
+SendLocation1("Right Fall Detection");
+delay(4000);
+SendLocation2("Right Fall Detection");
+}
+else
+{
+if (x_axis <= 320)
+{
+buz();
+Serial.println("LEFT");
+lcd.clear();
+lcd.setCursor(0,0);
+lcd.print("Left fall");
+delay(1000);
+SendLocation1("Left Fall Detection");
+delay(4000);
+SendLocation2("Left Fall Detection");
+}
+Serial.println(" ");
+}
+}
+}
+delay(200);
+if (x_axis > 320 && x_axis < 380 && y_axis > 310 && y_axis < 390)
+{
+//Stop stand position
+}
+}
+void modem_init()
+{
+Serial.println("Please wait.....");
+lcd.clear();
+lcd.setCursor(0,0);
+lcd.print("GSM Init....");
+gsm.println("AT");
+delay(2000);
+gsm.println("AT+CMGF=1");
+delay(1000);
+gsm.println("AT+CNMI=2,2,0,0,0");
+delay(1000);
+}
+void data_init()
+{
+Serial.println("Please wait.....");
+lcd.clear();
+lcd.setCursor(0,0);
+lcd.print("INITLIZTING GPRS...");
+gsm.print("AT\r\n");
+delay(1000);
+gsm.print("AT+SAPBR=3,1,\"Contype\",\"GPRS\"\r\n");
+delay(1000);
+gsm.print("AT+SAPBR=3,1,\"APN\",\"www\"\r\n");
+delay(1000);
+gsm.print("AT+SAPBR=1,1\r\n");
+delay(4000);
+}
+void internet_init()
+{
+Serial.println("Please wait.....");
+gsm.print("AT+HTTPINIT\r\n");
+delay(1000);
+gsm.print(" AT+HTTPPARA=\"CID\",1\r\n");
+delay(2000);
+lcd.clear();
+lcd.setCursor(0,0);
+lcd.print(" NET CONNECTED ");
+delay(1000);
+}
+void Send_data()
+{
+lcd.clear();
+lcd.setCursor(0,0);
+lcd.print("UPLOADING ...."); //GET
+https://api.thingspeak.com/update?api_key=XZAOR0ERD90EJJ3Z&field1=0
+delay(1000);
+gsm.print("AT+HTTPPARA=\"URL\",");
+gsm.print("\"http://api.thingspeak.com/update?api_key=0ZY1JZ03Y6487YO3&field1=");
+gsm.print(tempC);
+gsm.print("&field2=");
+gsm.print(latitude);
+gsm.print("&field3=");
+gsm.print(longitude);
+gsm.print("\" \r\n");
+delay(1000);
+gsm.print("AT+HTTPACTION=0\r\n");
+delay(1000);
+gsm.print("AT+HTTPREAD\r\n");
+delay(1000);
+lcd.clear();
+lcd.setCursor(0,0);
+lcd.print("DATA UPLOADED ");
+delay(1000);
+}
+void gpsInfo()
+{
+lcd.clear();
+lcd.setCursor(0, 0);
+lcd.print("Location: ");
+//Serial.print(F("Location: "));
+if (gps.location.isValid())
+{
+lcd.clear();
+lcd.setCursor(0, 0);
+lcd.print("LAT:");
+lcd.print(gps.location.lat(), 6);
+lcd.setCursor(0, 1);
+lcd.print("LON:");
+lcd.print(gps.location.lng(), 6);
+latitude = (gps.location.lat()); //Storing the Lat. and Lon.
+longitude = (gps.location.lng());
+//Blynk.virtualWrite(V3, String(latitude, 6));
+//Blynk.virtualWrite(V4, String(longitude, 6));
+//myMap.location(move_index, latitude, longitude, "GPS_Location");
+delay(1000);
+}
+}
+void receive_message()
+{
+if (gsm.available() > 0)
+{
+incomingData = gsm.readString(); // Get the data from the serial port.
+//Serial.print(incomingData);
+lcd.clear();
+lcd.print("Message Received");
+delay(500);
+//delay(10);
+}
+}
+void SendSMS()
+{
+lcd.clear();
+lcd.setCursor(0, 0);
+lcd.print("MODEM INIT....");
+gsm.println("AT"); //To send SMS in Text Mode
+delay(1000);
+gsm.println("AT+CMGF=1"); //To send SMS in Text Mode
+delay(1000);
+gsm.println("AT+CNMI=2,2,0,0,0"); //To send SMS in Text Mode
+delay(1000);
+gsm.println("AT+CMGS=\"9573465257\"\r"); //Change to destination phone number
+9494252144
+delay(1000);
+gsm.println("GSM Modem! INIT...");//the content of the message
+delay(200);
+gsm.println((char)26); //the stopping character Ctrl+Z
+gsm.write(0x1A);
+delay(5000);
+lcd.clear();
+lcd.setCursor(0, 0);
+lcd.print("MSG SENT");
+delay(1000);
+}
+void send_message(String message)
+{
+lcd.clear();
+lcd.setCursor(0, 0);
+lcd.print("MSG SENDING.....");
+gsm.println("AT"); //To send SMS in Text Mode
+delay(1000);
+gsm.println("AT+CMGF=1"); //To send SMS in Text Mode
+delay(1000);
+gsm.println("AT+CNMI=2,2,0,0,0"); //To send SMS in Text Mode
+delay(1000);
+gsm.println("AT+CMGF=1"); //Set the GSM Module in Text Mode
+delay(1000);
+gsm.println("AT+CMGS=\"9573465257\""); // Replace it with your mobile number
+delay(1000);
+gsm.println(message); // The SMS text you want to send
+delay(1000);
+gsm.println((char)26); //the stopping character Ctrl+Z
+gsm.write(0x1A);
+delay(3000);
+lcd.clear();
+lcd.setCursor(0, 0);
+lcd.print("MSG SENT");
+delay(1000);
+}
+void SendLocation1(String message)
+{
+lcd.clear();
+lcd.setCursor(0, 0);
+lcd.print("MSG SENDING.....");
+gsm.println("AT"); //To send SMS in Text Mode
+delay(1000);
+gsm.println("AT+CMGF=1"); //To send SMS in Text Mode
+delay(1000);
+gsm.println("AT+CNMI=2,2,0,0,0"); //To send SMS in Text Mode
+delay(1000);
+gsm.println("AT+CMGS=\"9573465257\"\r"); //Change to destination phone number
+//9494252144
+delay(1000);
+gsm.print(message);//mySerial.print(distance11);
+gsm.print("\nLocation At: http://maps.google.com/?=");//the content of the message
+gsm.print(gps.location.lat(), 6);
+gsm.print(F("+"));
+gsm.println(gps.location.lng(), 6);
+delay(500);
+gsm.println((char)26); //the stopping character Ctrl+Z
+gsm.write(0x1A);
+delay(5000);
+lcd.clear();
+lcd.setCursor(0, 0);
+lcd.print("MSG SENT");
+delay(1000);
+}
+void SendLocation2(String message)
+{
+lcd.clear();
+lcd.setCursor(0, 0);
+lcd.print("MSG SENDING.....");
+gsm.println("AT"); //To send SMS in Text Mode
+delay(1000);
+gsm.println("AT+CMGF=1"); //To send SMS in Text Mode
+delay(1000);
+gsm.println("AT+CNMI=2,2,0,0,0"); //To send SMS in Text Mode
+delay(1000);
+gsm.println("AT+CMGS=\"9573465257\"\r"); //Change to destination phone number
+//9494252144
+delay(1000);
+gsm.print(message);//mySerial.print(distance11);
+gsm.print("\nLocation At: http://maps.google.com/?=");//the content of the message
+gsm.print(gps.location.lat(), 6);
+gsm.print(F("+"));
+gsm.println(gps.location.lng(), 6);
+delay(500);
+gsm.println((char)26); //the stopping character Ctrl+Z
+gsm.write(0x1A);
+delay(5000);
+lcd.clear();
+lcd.setCursor(0, 0);
+lcd.print("MSG SENT");
+delay(1000);
+}
